@@ -137,37 +137,37 @@ void handle_path(struct server *serv, const_string method, const_string path, ha
 	.func = handler,
   };
   
-  *push(&serv->handlers, serv->arena) = hand;
+  arena_da_append(serv->arena, &serv->handlers, hand);
 }
 
-void compose_response(struct response *resp, arena *perm, arena scratch) {
+void compose_response(arena *arena, struct response *resp) {
   const_string_da header_da = {0};
-  *push(&header_da, &scratch) = CS("HTTP/1.1");
+  arena_da_append(arena, &header_da, CS("HTTP/1.1"));
 
   if (resp->code != 0) {
 	char buf[4];
 	sprintf(buf, "%ld", resp->code);
-	*push(&header_da, &scratch) = cs_from_cstr(buf);
-	*push(&header_da, &scratch) = get_response_string(resp->code);
+	arena_da_append(arena, &header_da, cs_from_cstr(buf));
+	arena_da_append(arena, &header_da, get_response_string(resp->code));
   } else {
 	printf("Response is handeled, but no code is given");
-	*push(&header_da, &scratch) = CS("500");
-	*push(&header_da, &scratch) = get_response_string(INTERNAL_SERVER_ERROR);
+	arena_da_append(arena, &header_da, CS("500"));
+	arena_da_append(arena, &header_da, get_response_string(INTERNAL_SERVER_ERROR));
   }
 
-  volatile const_string header = arena_cs_concat(&scratch, header_da, CS(" "));
+  const_string header = arena_cs_concat(arena, header_da, CS(" "));
 
-  volatile const_string str;
+  const_string str;
   if (resp->body.len != 0) {
 	const_string_da resp_da= {0};
 	
-	*push(&resp_da, perm) = header;
-	*push(&resp_da, perm) = CS("");
-	*push(&resp_da, perm) = resp->body;
+	arena_da_append(arena, &resp_da, header);
+	arena_da_append(arena, &resp_da, CS(""));
+	arena_da_append(arena, &resp_da, resp->body);
 	
-	str = arena_cs_concat(&scratch, resp_da, CS("\r\n"));
+	str = arena_cs_concat(arena, resp_da, CS("\r\n"));
   } else {
-	str = arena_cs_append(perm, header, CS("\r\n\r\n"));
+	str = arena_cs_append(arena, header, CS("\r\n\r\n"));
   }
   
   resp->string = str;
@@ -217,7 +217,7 @@ void process_request(struct server *serv, ssize_t inc_fd) {
 	header_str.data++;
 	header.value = header_str;
 
-	*push(&headers, &req_arena) = header;
+	arena_da_append(arena, &headers, header);
   }
   cs_chop_delim(&req_str, '\n');
   
