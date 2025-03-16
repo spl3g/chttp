@@ -15,6 +15,7 @@ const_string cs_from_parts(char* data, int len);
 const_string cs_from_cstr(char* cstr);
 const_string cs_slice(const_string src, int from, int to);
 const_string cs_chop_delim(const_string *src, char delim);
+bool cs_try_chop_delim(const_string *str, char delim, const_string *dst);
 int cs_find_delim(const_string str, char delim);
 bool cs_eq(const_string str1, const_string str2);
 void cs_print(char *format, const_string str);

@@ -55,6 +55,17 @@ const_string cs_chop_delim(const_string *str, char delim) {
   return result;
 }
 
+bool cs_try_chop_delim(const_string *str, char delim, const_string *dst) {
+  const_string str_copy = *str;
+  const_string tmp = cs_chop_delim(&str_copy, delim);
+  if (str_copy.len == 0) {
+	return false;
+  }
+  *str = str_copy;
+  *dst = tmp;
+  return true;
+}
+
 int cs_find_delim(const_string str, char delim) {
   int n;
   for (n = 0; n < str.len && str.data[n] != delim; n++) {}
