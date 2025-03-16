@@ -2,12 +2,12 @@
 
 #define MAX_DATA_SIZE 256
 #define BUFFER_SIZE 4096
-#define REQUEST_ARENA_SIZE 16*1024
+#define REQUEST_ARENA_SIZE 1024
 
 int volatile keepRunning = 1;
 
 struct {
-  int code;
+  response_code code;
   const_string string;
 } response_strings [] = {
   {100, CS_STATIC("Continue")},
@@ -32,6 +32,7 @@ struct {
   {404, CS_STATIC("Not Found")},
   {405, CS_STATIC("Method Not Allowed")},
   {406, CS_STATIC("Not Acceptable")},
+  {408, CS_STATIC("Request Timeout")},
   {418, CS_STATIC("Im A Teepot")},
   {500, CS_STATIC("Internal Server Error")},
   {501, CS_STATIC("Not Implemented")},
@@ -40,7 +41,7 @@ struct {
   {505, CS_STATIC("Http Version Not Suppported")},
 };
 
-const_string get_response_string(int code) {
+const_string get_response_string(response_code code) {
   for (int i = 0; sizeof(response_strings)/sizeof(response_strings[0]) ;i++) {
 	if (response_strings[i].code == code) {
 	  return response_strings[i].string;
@@ -173,80 +174,145 @@ void compose_response(arena *arena, struct response *resp) {
   resp->string = str;
 }
 
-void process_request(struct server *serv, ssize_t inc_fd) {
-  arena req_arena = {0};
-  arena req_scratch = {0};
+int chop_query(arena *arena, const_string *path, query_da *queries) {
+  const_string queries_str = *path;
+  int query_count = 0;
+
+  if (!cs_try_chop_delim(&queries_str, '?', path)) {
+	return 0;
+  }
+
+  const_string query_str;
+
+  if (!cs_try_chop_delim(&queries_str, '&', &query_str)) {
+	query_str = queries_str;
+  }
+
+  do {
+	query query = {0};
+	const_string key;
+	if (!cs_try_chop_delim(&query_str, '=', &key)) {
+	  return -1;
+	}
+	
+	query.key = key;
+	query.val = query_str;
+	arena_da_append(arena, queries, query);
+	query_count++;
+  } while (cs_try_chop_delim(&queries_str, '&', &query_str));
+  
+  return query_count;
+}
+
+const_string chop_request(const_string *req_str, char delim, bool *parse_err) {
+  if (*parse_err) {
+	return CS("");
+  }
+  const_string str;
+  if (!cs_try_chop_delim(req_str, delim, &str)) {
+	*parse_err = true;
+	return CS("");
+  }
+  return str;
+}
+
+int parse_request(arena *arena, size_t inc_fd, struct request *req) {
   char buf[MAX_DATA_SIZE];
   const_string req_str = {0};
 
   int got = recv(inc_fd, &buf, MAX_DATA_SIZE - 1, 0);
   if (got < 0) {
 	perror("recv");
-	return;
+	return REQUEST_TIMEOUT;
   }
 
   buf[got] = '\0';
 
-  req_str = arena_cs_append(&req_arena, req_str, cs_from_cstr(buf));
+  req_str = arena_cs_append(arena, req_str, cs_from_cstr(buf));
 
   while (got == MAX_DATA_SIZE - 1) {
 	got = recv(inc_fd, &buf, MAX_DATA_SIZE - 1, 0);
 	if (got < 0) {
 	  perror("recv");
-	  return;
+	  return REQUEST_TIMEOUT;
 	}
-
+	
 	buf[got] = '\0';
 
 	const_string tmp = cs_from_parts(buf, got);
-	req_str = arena_cs_append(&req_arena, req_str, tmp);
+	req_str = arena_cs_append(arena, req_str, tmp);
   }
 
-  const_string method = cs_chop_delim(&req_str, ' ');
-  const_string path = cs_chop_delim(&req_str, ' ');
-  cs_chop_delim(&req_str, '\r');
+  bool parse_err = false;
+  
+  const_string method = chop_request(&req_str, ' ', &parse_err);
+  const_string path = chop_request(&req_str, ' ', &parse_err);
+  chop_request(&req_str, '\r', &parse_err);
   req_str.data += 1;
 
   header_da headers = {0};
-  while (req_str.data[0] != '\r') {
-	const_string header_str = cs_chop_delim(&req_str, '\r');
+  while (!parse_err && req_str.data[0] != '\r') {
+	const_string header_str = chop_request(&req_str, '\r', &parse_err);
 	req_str.data += 1;
 
 	struct header header;
-	header.key = cs_chop_delim(&header_str, ':');
+	header.key = chop_request(&header_str, ':', &parse_err);
 	header_str.data++;
 	header.value = header_str;
 
 	arena_da_append(arena, &headers, header);
   }
-  cs_chop_delim(&req_str, '\n');
+  chop_request(&req_str, '\n', &parse_err);
   
-  struct request req = {
+  if (parse_err) {
+	return BAD_REQUEST;
+  }
+
+  query_da queries = {0};
+  
+  if (chop_query(arena, &path, &queries) < 0) {
+	return BAD_REQUEST;
+  }
+  
+  struct request request = {
 	.method = method,
 	.path = path,
+	.query = queries,
 	.headers = headers,
 	.body = req_str,
   };
-  struct response resp = {0};
+  
+  *req = request;
+  return 0;
+}
 
-  bool handled = false;
-  for (size_t i = 0; i < serv->handlers.len; i++) {
-	struct handler handler = serv->handlers.data[i];
-	if ((cs_eq(handler.path, CS("HEAD"))
-		 || cs_eq(handler.path, path))
-		&& cs_eq(serv->handlers.data[i].path, path)) {
-	  serv->handlers.data[i].func(req, &resp);
-	  handled = true;
-	  break;
+void process_request(struct server *serv, size_t inc_fd) {
+  arena req_arena = {0};
+
+  struct request req;
+  struct response resp = {0};
+  int parse_res = parse_request(&req_arena, inc_fd, &req);
+  if (parse_res != 0) {
+	resp.code = parse_res;
+  }
+
+  if (!resp.code) {
+	for (size_t i = 0; i < serv->handlers.len; i++) {
+	  struct handler handler = serv->handlers.data[i];
+	  if ((cs_eq(handler.method, req.method) || (cs_eq(handler.method, CS("GET")) && cs_eq(req.method, CS("HEAD"))) )
+		  && cs_eq(handler.path, req.path)) {
+		handler.func(req, &resp);
+		break;
+	  }
 	}
   }
 
-  if (!handled) {
-	resp.code = 404;
+  if (!resp.code) {
+	resp.code = NOT_FOUND;
   }
 
   if (resp.string.len == 0) {
-	compose_response(&resp, &req_arena, req_scratch);
+	compose_response(&req_arena, &resp);
   }
 
   char *resp_cstr = resp.string.data;
@@ -261,7 +327,7 @@ void process_request(struct server *serv, ssize_t inc_fd) {
   if (sent < 0) {
 	fprintf(stderr, "send: %s\n", strerror(errno));
   }
-  
+
   close(inc_fd);
   arena_free(&req_arena);
 }

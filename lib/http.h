@@ -31,15 +31,28 @@ typedef struct {
   size_t cap;
 } header_da;
 
+typedef struct {
+  const_string key;
+  const_string val;
+} query;
+
+typedef struct {
+  query *data;
+  size_t len;
+  size_t cap;
+} query_da;
+
 struct request {
   const_string method;
   const_string path;
+  query_da query;
   header_da headers;
   const_string body;
 };
 
 struct response {
   size_t code;
+  const_string headers;
   const_string body;
   const_string string;
 };
@@ -88,25 +101,21 @@ typedef enum {
   NOT_FOUND = 404,
   METHOD_NOT_ALLOWED = 405,
   NOT_ACCEPTABLE = 406,
+  REQUEST_TIMEOUT = 408,
   IM_A_TEEPOT = 418,
   INTERNAL_SERVER_ERROR = 500,
   NOT_IMPLEMENTED = 501,
   BAD_GATEWAY = 502,
   SERVICE_UNAVAILABLE = 503,
   HTTP_VERSION_NOT_SUPPPORTED = 505,
-} response_codes;
+} response_code;
 
-const_string get_response_string(int code);
-void sigchld_handler();
+const_string get_response_string(response_code code);
 void *get_in_addr(struct sockaddr *sa);
 int get_in_port(struct sockaddr *sa);
 
 int init_server(arena *arena, struct server *serv, char *addr, char *port);
-void compose_response(struct response *resp, arena *perm, arena scratch);
-void process_request(struct server *serv, ssize_t inc_fd);
 int listen_and_serve(struct server *serv);
 
 void handle_path(struct server *serv, const_string method, const_string path, handler_func handler);
-void compose_response(struct response *resp, arena *perm, arena scratch);
-void process_request(struct server *serv, ssize_t inc_fd);
 #endif // HTTP_H_

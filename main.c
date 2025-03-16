@@ -6,6 +6,11 @@ void success(struct request req, struct response *resp) {
   cs_print("Path: %s\n", req.path);
   cs_print("Body: %s\n", req.body);
 
+  for (size_t i = 0; i < req.query.len; i++) {
+	cs_print("%s: ", req.query.data[i].key);
+	cs_print("%s\n", req.query.data[i].val);
+  };
+
   resp->code = OK;
   resp->body = CS("Hello world!\n");
 }
@@ -19,10 +24,6 @@ int main() {
 
   handle_path(&serv, CS("GET"), CS("/"), success);
   listen_and_serve(&serv);
-
-  // closing and freeing
-  printf("closing sockets");
-  close(serv.sockfd);
 
   return 0;
 }
