@@ -164,10 +164,6 @@ int init_server(arena *arena, struct server *serv, char *addr, char *port) {
 	return 1;
   }
 
-  char my_ipstr[INET6_ADDRSTRLEN];
-  inet_ntop(serv->addr->sa_family, get_in_addr(serv->addr), my_ipstr, sizeof my_ipstr);
-  printf("Listening on %s:%d\n", my_ipstr, get_in_port(serv->addr));
-
   return 0;
 }
 
@@ -191,7 +187,7 @@ void compose_response(arena *arena, struct response *resp) {
 	arena_da_append(arena, &header_da, cs_from_cstr(buf));
 	arena_da_append(arena, &header_da, get_response_string(resp->code));
   } else {
-	printf("Response is handeled, but no code is given");
+	printf("Response is handeled, but no code is given\n");
 	arena_da_append(arena, &header_da, CS("500"));
 	arena_da_append(arena, &header_da, get_response_string(INTERNAL_SERVER_ERROR));
   }
@@ -407,7 +403,7 @@ void process_request(struct server *serv, size_t inc_fd) {
   }
 
   if (sent < 0) {
-	fprintf(stderr, "send: %s\n", strerror(errno));
+	perror("send");
   }
 
   close(inc_fd);
@@ -416,9 +412,14 @@ void process_request(struct server *serv, size_t inc_fd) {
 
 int listen_and_serve(struct server *serv) {
   if (listen(serv->sockfd, 10) != 0) {
-	fprintf(stderr, "listen: %s\n", strerror(errno));
+	perror("listen");
 	return 1;
   }
+
+  char my_ipstr[INET6_ADDRSTRLEN];
+  inet_ntop(serv->addr->sa_family, get_in_addr(serv->addr), my_ipstr, sizeof my_ipstr);
+  printf("Listening on %s:%d\n", my_ipstr, get_in_port(serv->addr));
+
 
   while (keepRunning) {
 	struct sockaddr inc_addr;
