@@ -98,6 +98,25 @@ void *get_context_value(context *ctx, const_string key) {
   return NULL;
 }
 
+void resp_set_code(struct response* resp, response_code code) {
+  resp->code = code;
+}
+
+void resp_set_json(arena *arena, struct response* resp, const_string json) {
+  const_string len_str = arena_cs_init(arena, snprintf(NULL, 0, "%d", json.len+2));
+  sprintf(len_str.data, "%d", json.len+2);
+  arena_da_append(arena, &resp->headers, ((KV){CS("Content-Length"), len_str}));
+  arena_da_append(arena, &resp->headers, ((KV){CS("Content-Type"), CS("application/json")}));
+  resp->body = json;
+}
+void resp_set_body(arena *arena, struct response* resp, const_string body) {
+  const_string len_str = arena_cs_init(arena, snprintf(NULL, 0, "%d", body.len));
+  sprintf(len_str.data, "%d", body.len);
+  arena_da_append(arena, &resp->headers, ((KV){CS("Content-Length"), len_str}));
+  arena_da_append(arena, &resp->headers, ((KV){CS("Content-Type"), CS("application/text")}));
+  resp->body = body;
+}
+
 int init_server(arena *arena, struct server *serv, char *addr, char *port) {
   // serv initialization
   struct addrinfo hints, *res;
@@ -177,20 +196,27 @@ void compose_response(arena *arena, struct response *resp) {
 	arena_da_append(arena, &header_da, get_response_string(INTERNAL_SERVER_ERROR));
   }
 
-  const_string header = arena_cs_concat(arena, header_da, CS(" "));
+  const_string_da resp_da= {0};
 
-  const_string str;
+  const_string http_header = arena_cs_concat(arena, header_da, CS(" "));
+  arena_da_append(arena, &resp_da, http_header);
+
+  for (size_t i = 0; i < resp->headers.len; i++) {
+	KV *header = (resp->headers.data + i);
+	const_string header_str = {0};
+	header_str = arena_cs_append(arena, header_str, header->key);
+	header_str = arena_cs_append(arena, header_str, CS(": "));
+	header_str = arena_cs_append(arena, header_str, header->value);
+	arena_da_append(arena, &resp_da, header_str);
+  }
+  
   if (resp->body.len != 0) {
-	const_string_da resp_da= {0};
-	
-	arena_da_append(arena, &resp_da, header);
 	arena_da_append(arena, &resp_da, CS(""));
 	arena_da_append(arena, &resp_da, resp->body);
-	
-	str = arena_cs_concat(arena, resp_da, CS("\r\n"));
-  } else {
-	str = arena_cs_append(arena, header, CS("\r\n\r\n"));
   }
+  
+  arena_da_append(arena, &resp_da, CS(""));
+  const_string str = arena_cs_concat(arena, resp_da, CS("\r\n"));
   
   resp->string = str;
 }

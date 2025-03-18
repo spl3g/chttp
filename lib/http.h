@@ -51,7 +51,7 @@ struct request {
 
 struct response {
   size_t code;
-  const_string headers;
+  header_da headers;
   const_string body;
   const_string string;
 };
