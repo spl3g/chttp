@@ -30,11 +30,11 @@ const_string arena_cs_concat(arena *a, const_string_da strings, const_string sep
 	len += (strings.data + i)->len;
   };
   
-  volatile const_string str = arena_cs_init(a, len);
-  volatile int offset = 0;
+  const_string str = arena_cs_init(a, len);
+  int offset = 0;
   
   for (size_t i = 0; i < strings.len; i++) {
-	volatile int curr_strlen = (strings.data + i)->len;
+	int curr_strlen = (strings.data + i)->len;
 	memcpy(str.data + offset,
 		   (strings.data + i)->data,
 		   curr_strlen);
