@@ -77,6 +77,27 @@ int get_in_port(struct sockaddr *sa) {
   return (((struct sockaddr_in6*)sa)->sin6_port);
 }
 
+void set_context_value(arena *arena, context *ctx, context_value kv) {
+  for (size_t i = 0; i < ctx->len; i++) {
+	context_value *ctx_val = (ctx->data + i);
+	if (cs_eq(kv.key, ctx_val->key)) {
+	  ctx_val->val = kv.val;
+	  return;
+	}
+  }
+  arena_da_append(arena, ctx, kv);
+}
+
+void *get_context_value(context *ctx, const_string key) {
+  for (size_t i = 0; i < ctx->len; i++) {
+	context_value *ctx_val = (ctx->data + i);
+	if (cs_eq(key, ctx_val->key)) {
+	  return ctx_val->val;
+	}
+  }
+  return NULL;
+}
+
 int init_server(arena *arena, struct server *serv, char *addr, char *port) {
   // serv initialization
   struct addrinfo hints, *res;
@@ -189,14 +210,14 @@ int chop_query(arena *arena, const_string *path, query_da *queries) {
   }
 
   do {
-	query query = {0};
+	KV query = {0};
 	const_string key;
 	if (!cs_try_chop_delim(&query_str, '=', &key)) {
 	  return -1;
 	}
 	
 	query.key = key;
-	query.val = query_str;
+	query.value = query_str;
 	arena_da_append(arena, queries, query);
 	query_count++;
   } while (cs_try_chop_delim(&queries_str, '&', &query_str));
@@ -255,7 +276,7 @@ int parse_request(arena *arena, size_t inc_fd, struct request *req) {
 	const_string header_str = chop_request(&req_str, '\r', &parse_err);
 	req_str.data += 1;
 
-	struct header header;
+	KV header;
 	header.key = chop_request(&header_str, ':', &parse_err);
 	header_str.data++;
 	header.value = header_str;
@@ -294,6 +315,12 @@ void process_request(struct server *serv, size_t inc_fd) {
   int parse_res = parse_request(&req_arena, inc_fd, &req);
   if (parse_res != 0) {
 	resp.code = parse_res;
+  }
+
+  context req_context = {0};
+  set_context_value(&req_arena, &req_context, (context_value){CS("arena"), &req_arena});
+  for (size_t i = 0; i < serv->global_ctx.len; i++) {
+	set_context_value(&req_arena, &req_context, *(serv->global_ctx.data + i));
   }
 
   if (!resp.code) {

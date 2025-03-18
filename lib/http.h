@@ -19,14 +19,13 @@
 #include "arena_strings.h"
 #include "arena.h"
 
-struct header {
+typedef struct {
   const_string key;
   const_string value;
-};
-
+} KV;
 
 typedef struct {
-  struct header *data;
+  KV *data;
   size_t len;
   size_t cap;
 } header_da;
@@ -37,7 +36,7 @@ typedef struct {
 } query;
 
 typedef struct {
-  query *data;
+  KV *data;
   size_t len;
   size_t cap;
 } query_da;
@@ -57,7 +56,18 @@ struct response {
   const_string string;
 };
 
-typedef void (*handler_func)(struct request, struct response *resp);
+typedef struct {
+  const_string key;
+  void *val;
+} context_value;
+
+typedef struct {
+  context_value *data;
+  size_t len;
+  size_t cap;
+} context;
+
+typedef void (*handler_func)(context*, struct request, struct response *resp);
 
 struct handler {
   const_string method;
@@ -72,10 +82,11 @@ typedef struct {
 } handler_da;
 
 struct server {
-  arena *arena;
   int sockfd;
   struct sockaddr *addr;
+  arena *arena;
   handler_da handlers;
+  context global_ctx;
 };
 
 typedef enum {
@@ -113,6 +124,12 @@ typedef enum {
 const_string get_response_string(response_code code);
 void *get_in_addr(struct sockaddr *sa);
 int get_in_port(struct sockaddr *sa);
+
+void set_context_value(arena *arena, context *ctx, context_value kv);
+void *get_context_value(context *ctx, const_string key);
+
+void resp_set_code(struct response* resp, response_code code);
+void resp_set_json(arena *arena, struct response* resp, const_string json);
 
 int init_server(arena *arena, struct server *serv, char *addr, char *port);
 int listen_and_serve(struct server *serv);
