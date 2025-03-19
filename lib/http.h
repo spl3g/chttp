@@ -14,6 +14,7 @@
 #include <sys/wait.h>
 #include <signal.h>
 #include <stdlib.h>
+#include <stdarg.h>
 
 #include "const_strings.h"
 #include "arena_strings.h"
@@ -90,6 +91,12 @@ struct server {
 };
 
 typedef enum {
+  HTTP_INFO = 0,
+  HTTP_WARNING,
+  HTTP_ERROR,
+} http_log_level;
+
+typedef enum {
   CONTINUE = 100,
   SWITCHING_PROTOCOLS = 101,
   PROCESSING = 102,
@@ -124,6 +131,7 @@ typedef enum {
 const_string get_response_string(response_code code);
 void *get_in_addr(struct sockaddr *sa);
 int get_in_port(struct sockaddr *sa);
+void http_log(http_log_level log, char *fmt, ...);
 
 void set_context_value(arena *arena, context *ctx, context_value kv);
 void *get_context_value(context *ctx, const_string key);

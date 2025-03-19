@@ -60,6 +60,27 @@ void sigchld_handler() {
     errno = saved_errno;
 }
 
+void http_log(http_log_level log, char *fmt, ...) {
+  switch (log) {
+  case HTTP_INFO:
+	fprintf(stderr, "[INFO] ");
+	break;
+	
+  case HTTP_WARNING:
+	fprintf(stderr, "[WARNING] ");
+	break;
+
+  case HTTP_ERROR:
+	fprintf(stderr, "[ERROR] ");
+	break;
+  }
+
+  va_list args;
+  va_start(args, fmt);
+  vfprintf(stderr, fmt, args);
+  va_end(args);
+}
+
 
 void *get_in_addr(struct sockaddr *sa) {
 	if (sa->sa_family == AF_INET) {
@@ -421,11 +442,10 @@ int listen_and_serve(struct server *serv) {
 	perror("listen");
 	return 1;
   }
-
+  
   char my_ipstr[INET6_ADDRSTRLEN];
   inet_ntop(serv->addr->sa_family, get_in_addr(serv->addr), my_ipstr, sizeof my_ipstr);
-  printf("Listening on %s:%d\n", my_ipstr, get_in_port(serv->addr));
-
+  http_log(HTTP_INFO, "Listening on %s:%d\n", my_ipstr, get_in_port(serv->addr));
 
   while (keepRunning) {
 	struct sockaddr inc_addr;
