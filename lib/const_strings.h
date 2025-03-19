@@ -6,13 +6,13 @@
 #include <stdbool.h>
 
 typedef struct {
-  char* data;
+  const char* data;
   int len;
 } const_string;
 
 
-const_string cs_from_parts(char* data, int len);
-const_string cs_from_cstr(char* cstr);
+const_string cs_from_parts(const char* data, int len);
+const_string cs_from_cstr(const char* cstr);
 const_string cs_slice(const_string src, int from, int to);
 const_string cs_chop_delim(const_string *src, char delim);
 bool cs_try_chop_delim(const_string *str, char delim, const_string *dst);

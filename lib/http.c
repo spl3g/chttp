@@ -103,16 +103,22 @@ void resp_set_code(struct response* resp, response_code code) {
 }
 
 void resp_set_json(arena *arena, struct response* resp, const_string json) {
-  const_string len_str = arena_cs_init(arena, snprintf(NULL, 0, "%d", json.len+2));
-  sprintf(len_str.data, "%d", json.len+2);
-  arena_da_append(arena, &resp->headers, ((KV){CS("Content-Length"), len_str}));
+  int num_str_len = snprintf(NULL, 0, "%d", json.len+2);
+  char* len_str = arena_alloc(arena, snprintf(NULL, 0, "%d", json.len+2));
+  sprintf(len_str, "%d", json.len+2);
+  const_string len_cs = {len_str, num_str_len};
+  
+  arena_da_append(arena, &resp->headers, ((KV){CS("Content-Length"), len_cs}));
   arena_da_append(arena, &resp->headers, ((KV){CS("Content-Type"), CS("application/json")}));
   resp->body = json;
 }
 void resp_set_body(arena *arena, struct response* resp, const_string body) {
-  const_string len_str = arena_cs_init(arena, snprintf(NULL, 0, "%d", body.len));
-  sprintf(len_str.data, "%d", body.len);
-  arena_da_append(arena, &resp->headers, ((KV){CS("Content-Length"), len_str}));
+  int num_str_len = snprintf(NULL, 0, "%d", body.len+2);
+  char* len_str = arena_alloc(arena, snprintf(NULL, 0, "%d", body.len+2));
+  sprintf(len_str, "%d", body.len+2);
+  const_string len_cs = {len_str, num_str_len};
+
+  arena_da_append(arena, &resp->headers, ((KV){CS("Content-Length"), len_cs}));
   arena_da_append(arena, &resp->headers, ((KV){CS("Content-Type"), CS("application/text")}));
   resp->body = body;
 }
@@ -393,7 +399,7 @@ void process_request(struct server *serv, size_t inc_fd) {
 	compose_response(&req_arena, &resp);
   }
 
-  char *resp_cstr = resp.string.data;
+  const char *resp_cstr = resp.string.data;
   int resp_len = resp.string.len;
 
   int sent = send(inc_fd, resp_cstr, resp_len, 0);

@@ -1,6 +1,6 @@
 #include "const_strings.h"
 
-const_string cs_from_parts(char* data, int len) {
+const_string cs_from_parts(const char* data, int len) {
   const_string str;
   str.data = data;
   str.len = len;
@@ -8,7 +8,7 @@ const_string cs_from_parts(char* data, int len) {
   return str;
 }
 
-const_string cs_from_cstr(char* cstr) {
+const_string cs_from_cstr(const char* cstr) {
   return cs_from_parts(cstr, strlen(cstr));
 }
 

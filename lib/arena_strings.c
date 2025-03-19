@@ -25,29 +25,29 @@ const_string arena_cs_concat(arena *a, const_string_da strings, const_string sep
 	return *strings.data;
   }
   
-  volatile int len = sep.len * (strings.len - 1);
+  int len = sep.len * (strings.len - 1);
   for (size_t i = 0; i < strings.len; i++) {
 	len += (strings.data + i)->len;
   };
   
-  const_string str = arena_cs_init(a, len);
+  char* str = arena_alloc(a, len);
   int offset = 0;
   
   for (size_t i = 0; i < strings.len; i++) {
 	int curr_strlen = (strings.data + i)->len;
-	memcpy(str.data + offset,
+	memcpy(str + offset,
 		   (strings.data + i)->data,
 		   curr_strlen);
 	
 	offset += curr_strlen;
 	
 	if (i != strings.len - 1) {
-	  memcpy(str.data + offset,
+	  memcpy(str + offset,
 			 sep.data, sep.len);
 	  offset += sep.len;
 	}
   };
-  *(str.data + len + 1) = '\0';
+  *(str + len + 1) = '\0';
   
-  return str;
+  return (const_string){str, len};
 };
