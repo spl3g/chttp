@@ -161,7 +161,7 @@ int init_server(arena *arena, struct server *serv, char *addr, char *port) {
 
   int sockfd = socket(res->ai_family, res->ai_socktype, 0);
   if (sockfd < 0) {
-	perror("bind");
+	perror("socket");
 	return 1;
   }
 
