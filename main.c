@@ -9,7 +9,12 @@ void success(struct request req) {
 
 void logging_func(http_middleware *self, struct request req) {
   (self->next->func)(self->next, req);
-  http_log(HTTP_INFO, "[1]"CS_FMT" "CS_FMT": %ld\n", CS_ARG(req.method), CS_ARG(req.path), req.resp->code);
+  http_log(HTTP_INFO, CS_FMT" "CS_FMT": %ld\n", CS_ARG(req.method), CS_ARG(req.path), req.resp->code);
+}
+
+void whatever(http_middleware *self, struct request req) {
+  http_log(HTTP_INFO, "Whatever");
+  (self->next->func)(self->next, req);
 }
 
 int main() {
@@ -19,8 +24,9 @@ int main() {
 	return 1;
   }
 
-  handler *success_handler = handle_path(&serv, CS("GET"), CS("/"), success);
-  http_register_handler_middleware(&arena, success_handler, logging_func);
+  http_register_global_middleware(&serv, logging_func);
+  handler *success_handler = http_handle_path(&serv, CS("GET"), CS("/"), success);
+  http_register_handler_middleware(&arena, success_handler, whatever);
   
   listen_and_serve(&serv);
 

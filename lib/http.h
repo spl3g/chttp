@@ -101,13 +101,18 @@ struct handler_da {
   size_t cap;
 };
 
+typedef struct {
+  http_middleware *start;
+  http_middleware *end;
+} http_global_middleware;
+
 struct server {
   size_t sockfd;
   struct sockaddr *addr;
   arena *arena;
   handler_da handlers;
   context global_ctx;
-  http_middleware *global_middleware;
+  http_global_middleware *global_middleware;
 };
 
 typedef enum {
@@ -163,8 +168,9 @@ void http_send_body(struct request req, const_string body);
 int init_server(arena *arena, struct server *serv, char *addr, char *port);
 int listen_and_serve(struct server *serv);
 
-handler *handle_path(struct server *serv, const_string method, const_string path, handler_func handler);
+handler *http_handle_path(struct server *serv, const_string method, const_string path, handler_func handler);
 
+void http_register_global_middleware(struct server *hand, http_middleware_func func);
 void http_register_handler_middleware(arena *arena, handler *hand, http_middleware_func func);
 
 #endif // HTTP_H_

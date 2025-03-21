@@ -133,39 +133,37 @@ void http_register_handler_middleware(arena *arena, handler *hand, http_middlewa
   middleware->func = func;
   middleware->handler = hand->func;
   if (hand->middleware == NULL) {
-	http_middleware *runner_middleware = arena_alloc(arena, sizeof(http_middleware));
-	runner_middleware->func = http_handler_runner_middleware;
-	runner_middleware->handler = hand->func;
-
-	middleware->next = runner_middleware;
 	hand->middleware = middleware;
 	return;
   }
 
-  volatile http_middleware *next = hand->middleware;
-  while (next->next->next != NULL) {
+  http_middleware **prev = &hand->middleware;
+  http_middleware *next = hand->middleware;
+  while (next->next != NULL) {
+	prev = &next;
 	next = next->next;
   }
-  middleware->next = next->next;
-  next->next = middleware;
+  middleware->next = next;
+  *prev = middleware;
 }
 
-void http_register_global_middleware(arena *arena, struct server *serv, http_middleware_func func) {
+void http_register_global_middleware(struct server *serv, http_middleware_func func) {
+  arena *arena = serv->arena;
+  
   http_middleware *middleware = arena_alloc(arena, sizeof(http_middleware));
   handler_func *handler = arena_alloc(arena, sizeof(handler_func));
   middleware->func = func;
   middleware->handler = *handler;
   if (serv->global_middleware == NULL) {
-	serv->global_middleware = middleware;
+	http_global_middleware *global_middleware = arena_alloc(arena, sizeof(http_global_middleware));
+	global_middleware->start = middleware;
+	global_middleware->end = middleware;
+	serv->global_middleware = global_middleware;
 	return;
   }
 
-  http_middleware *next = serv->global_middleware;
-  while (next->next != NULL) {
-	next = next->next;
-  }
-
-  next->next = middleware;
+  serv->global_middleware->end->next = middleware;
+  serv->global_middleware->end = middleware;
 }
 
 int init_server(arena *arena, struct server *serv, char *addr, char *port) {
@@ -218,12 +216,13 @@ int init_server(arena *arena, struct server *serv, char *addr, char *port) {
   return 0;
 }
 
-handler *handle_path(struct server *serv, const_string method, const_string path, handler_func handler) {
+handler *http_handle_path(struct server *serv, const_string method, const_string path, handler_func handler) {
   struct handler hand = {
 	.method = method,
 	.path = path,
 	.func = handler,
   };
+  http_register_handler_middleware(serv->arena, &hand, http_handler_runner_middleware);
   
   arena_da_append(serv->arena, &serv->handlers, hand);
   return &serv->handlers.data[serv->handlers.len-1];
@@ -498,14 +497,16 @@ void *process_request(void *args) {
 	set_context_value(&req_arena, &req_context, *(serv.global_ctx.data + i));
   }
 
-  if (!resp.code) {
+  if (!resp.sent) {
 	for (size_t i = 0; i < serv.handlers.len; i++) {
 	  struct handler handler = serv.handlers.data[i];
 	  if (check_handler(handler, req, &req_arena, &req_context)) {
-		if (handler.middleware != NULL) {
-		  handler.middleware->func(handler.middleware, req);
+		if (serv.global_middleware != NULL) {
+		  http_global_middleware *g_mid = serv.global_middleware;
+		  g_mid->end->next = handler.middleware;
+		  g_mid->start->func(g_mid->start, req);
 		} else {
-		  handler.func(req);
+		  handler.middleware->func(handler.middleware, req);
 		}
 		
 		if (!resp.sent) {
