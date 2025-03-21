@@ -10,7 +10,6 @@ typedef struct {
   int len;
 } const_string;
 
-
 const_string cs_from_parts(const char* data, int len);
 const_string cs_from_cstr(const char* cstr);
 const_string cs_slice(const_string src, int from, int to);
@@ -23,8 +22,7 @@ void cs_print(char *format, const_string str);
 #define CS(cstr) cs_from_parts(cstr, sizeof(cstr) - 1)
 #define CS_STATIC(cstr) {.data = cstr, .len = sizeof(cstr) - 1}
 
+#define CS_FMT "%.*s"
+#define CS_ARG(cs) (int) (cs).len, (cs).data
+
 #endif // STRINGS_H_
-
-
-#ifdef CONST_STRINGS_IMPLEMENTATION
-#endif // STRINGS_IMPLEMENTATION
