@@ -15,6 +15,7 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <pthread.h>
 
 #include "const_strings.h"
 #include "arena_strings.h"
@@ -42,21 +43,6 @@ typedef struct {
   size_t cap;
 } query_da;
 
-struct request {
-  const_string method;
-  const_string path;
-  query_da query;
-  header_da headers;
-  const_string body;
-};
-
-struct response {
-  size_t code;
-  header_da headers;
-  const_string body;
-  const_string string;
-};
-
 typedef struct {
   const_string key;
   void *val;
@@ -68,26 +54,60 @@ typedef struct {
   size_t cap;
 } context;
 
-typedef void (*handler_func)(context*, struct request, struct response *resp);
+struct request {
+  size_t inc_fd;
+  const_string method;
+  const_string path;
+  query_da query;
+  header_da headers;
+  const_string body;
+
+  arena *arena;
+  struct response* resp;
+  context *ctx;
+};
+
+struct response {
+  size_t code;
+  header_da headers;
+  const_string body;
+  bool sent;
+};
+
+typedef void (*handler_func)(struct request);
+
+typedef struct handler_da handler_da;
+typedef struct http_middleware http_middleware;
+typedef struct handler handler; 
+
+typedef void (*http_middleware_func)(http_middleware *, struct request);
+
+struct http_middleware {
+  http_middleware_func func;
+  http_middleware *next;
+  handler_func handler;
+};
 
 struct handler {
   const_string method;
   const_string path;
+  http_middleware *middleware;
   handler_func func;
 };
 
-typedef struct {
-  struct handler *data;
+struct handler_da {
+  handler *data;
   size_t len;
   size_t cap;
-} handler_da;
+};
 
 struct server {
-  int sockfd;
+  size_t sockfd;
   struct sockaddr *addr;
   arena *arena;
   handler_da handlers;
   context global_ctx;
+  http_middleware *global_middleware;
 };
 
 typedef enum {
@@ -134,13 +154,17 @@ int get_in_port(struct sockaddr *sa);
 void http_log(http_log_level log, char *fmt, ...);
 
 void set_context_value(arena *arena, context *ctx, context_value kv);
-void *get_context_value(context *ctx, const_string key);
+void *get_context_value(context *ctx, char* key);
 
-void resp_set_code(struct response* resp, response_code code);
-void resp_set_json(arena *arena, struct response* resp, const_string json);
+void http_send(struct request req);
+void http_send_json(struct request req, const_string json);
+void http_send_body(struct request req, const_string body);
 
 int init_server(arena *arena, struct server *serv, char *addr, char *port);
 int listen_and_serve(struct server *serv);
 
-void handle_path(struct server *serv, const_string method, const_string path, handler_func handler);
+handler *handle_path(struct server *serv, const_string method, const_string path, handler_func handler);
+
+void http_register_handler_middleware(arena *arena, handler *hand, http_middleware_func func);
+
 #endif // HTTP_H_

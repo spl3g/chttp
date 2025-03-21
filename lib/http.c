@@ -109,39 +109,63 @@ void set_context_value(arena *arena, context *ctx, context_value kv) {
   arena_da_append(arena, ctx, kv);
 }
 
-void *get_context_value(context *ctx, const_string key) {
+void *get_context_value(context *ctx, char* key) {
+  if (ctx == NULL) {
+	return NULL;
+  }
+
+  const_string key_cs = cs_from_cstr(key);
   for (size_t i = 0; i < ctx->len; i++) {
 	context_value *ctx_val = (ctx->data + i);
-	if (cs_eq(key, ctx_val->key)) {
+	if (cs_eq(key_cs, ctx_val->key)) {
 	  return ctx_val->val;
 	}
   }
   return NULL;
 }
 
-void resp_set_code(struct response* resp, response_code code) {
-  resp->code = code;
+void http_handler_runner_middleware(http_middleware *self, struct request req) {
+  (self->handler)(req);
 }
 
-void resp_set_json(arena *arena, struct response* resp, const_string json) {
-  int num_str_len = snprintf(NULL, 0, "%d", json.len+2);
-  char* len_str = arena_alloc(arena, snprintf(NULL, 0, "%d", json.len+2));
-  sprintf(len_str, "%d", json.len+2);
-  const_string len_cs = {len_str, num_str_len};
-  
-  arena_da_append(arena, &resp->headers, ((KV){CS("Content-Length"), len_cs}));
-  arena_da_append(arena, &resp->headers, ((KV){CS("Content-Type"), CS("application/json")}));
-  resp->body = json;
-}
-void resp_set_body(arena *arena, struct response* resp, const_string body) {
-  int num_str_len = snprintf(NULL, 0, "%d", body.len+2);
-  char* len_str = arena_alloc(arena, snprintf(NULL, 0, "%d", body.len+2));
-  sprintf(len_str, "%d", body.len+2);
-  const_string len_cs = {len_str, num_str_len};
+void http_register_handler_middleware(arena *arena, handler *hand, http_middleware_func func) {
+  http_middleware *middleware = arena_alloc(arena, sizeof(http_middleware));
+  middleware->func = func;
+  middleware->handler = hand->func;
+  if (hand->middleware == NULL) {
+	http_middleware *runner_middleware = arena_alloc(arena, sizeof(http_middleware));
+	runner_middleware->func = http_handler_runner_middleware;
+	runner_middleware->handler = hand->func;
 
-  arena_da_append(arena, &resp->headers, ((KV){CS("Content-Length"), len_cs}));
-  arena_da_append(arena, &resp->headers, ((KV){CS("Content-Type"), CS("application/text")}));
-  resp->body = body;
+	middleware->next = runner_middleware;
+	hand->middleware = middleware;
+	return;
+  }
+
+  volatile http_middleware *next = hand->middleware;
+  while (next->next->next != NULL) {
+	next = next->next;
+  }
+  middleware->next = next->next;
+  next->next = middleware;
+}
+
+void http_register_global_middleware(arena *arena, struct server *serv, http_middleware_func func) {
+  http_middleware *middleware = arena_alloc(arena, sizeof(http_middleware));
+  handler_func *handler = arena_alloc(arena, sizeof(handler_func));
+  middleware->func = func;
+  middleware->handler = *handler;
+  if (serv->global_middleware == NULL) {
+	serv->global_middleware = middleware;
+	return;
+  }
+
+  http_middleware *next = serv->global_middleware;
+  while (next->next != NULL) {
+	next = next->next;
+  }
+
+  next->next = middleware;
 }
 
 int init_server(arena *arena, struct server *serv, char *addr, char *port) {
@@ -194,7 +218,7 @@ int init_server(arena *arena, struct server *serv, char *addr, char *port) {
   return 0;
 }
 
-void handle_path(struct server *serv, const_string method, const_string path, handler_func handler) {
+handler *handle_path(struct server *serv, const_string method, const_string path, handler_func handler) {
   struct handler hand = {
 	.method = method,
 	.path = path,
@@ -202,9 +226,10 @@ void handle_path(struct server *serv, const_string method, const_string path, ha
   };
   
   arena_da_append(serv->arena, &serv->handlers, hand);
+  return &serv->handlers.data[serv->handlers.len-1];
 }
 
-void compose_response(arena *arena, struct response *resp) {
+const_string http_compose_response(arena *arena, struct response *resp) {
   const_string_da header_da = {0};
   arena_da_append(arena, &header_da, CS("HTTP/1.1"));
 
@@ -238,10 +263,63 @@ void compose_response(arena *arena, struct response *resp) {
 	arena_da_append(arena, &resp_da, resp->body);
   }
   
-  arena_da_append(arena, &resp_da, CS(""));
   const_string str = arena_cs_concat(arena, resp_da, CS("\r\n"));
   
-  resp->string = str;
+  return str;
+}
+
+
+void http_send_response(size_t inc_fd, const_string resp) {
+  const char *resp_cstr = resp.data;
+  int resp_len = resp.len;
+
+  int sent = send(inc_fd, resp_cstr, resp_len, 0);
+  while (sent > 0 && resp_len - sent > 0) {
+	resp_len -= sent;
+	sent = send(inc_fd, resp_cstr, resp_len, 0);
+  }
+
+  if (sent < 0) {
+	perror("send");
+  }
+}
+
+void http_send(struct request req) {
+  arena *arena = req.arena;
+  
+  assert(req.resp->code);
+  const_string response = http_compose_response(arena, req.resp);
+  http_send_response(req.inc_fd, response);
+  req.resp->sent = true;
+}
+
+void http_send_json(struct request req, const_string json) {
+  arena *arena = req.arena;
+  
+  int num_str_len = snprintf(NULL, 0, "%d", json.len);
+  char* len_str = arena_alloc(arena, snprintf(NULL, 0, "%d", json.len));
+  sprintf(len_str, "%d", json.len);
+  const_string len_cs = {len_str, num_str_len};
+
+  arena_da_append(arena, &req.resp->headers, ((KV){CS("Content-Length"), len_cs}));
+  arena_da_append(arena, &req.resp->headers, ((KV){CS("Content-Type"), CS("application/json")}));
+  req.resp->body = json;
+  
+  http_send(req);
+}
+void http_send_body(struct request req, const_string body) {
+  arena *arena = req.arena;
+  
+  int num_str_len = snprintf(NULL, 0, "%d", body.len+2);
+  char* len_str = arena_alloc(arena, snprintf(NULL, 0, "%d", body.len));
+  sprintf(len_str, "%d", body.len);
+  const_string len_cs = {len_str, num_str_len};
+
+  arena_da_append(arena, &req.resp->headers, ((KV){CS("Content-Length"), len_cs}));
+  arena_da_append(arena, &req.resp->headers, ((KV){CS("Content-Type"), CS("application/text")}));
+  req.resp->body = body;
+
+  http_send(req);
 }
 
 int chop_query(arena *arena, const_string *path, query_da *queries) {
@@ -344,19 +422,24 @@ int parse_request(arena *arena, size_t inc_fd, struct request *req) {
 	return BAD_REQUEST;
   }
   
-  struct request request = {
-	.method = method,
-	.path = path,
-	.query = queries,
-	.headers = headers,
-	.body = req_str,
-  };
   
-  *req = request;
+  req->method = method;
+  req->path = path;
+  req->query = queries;
+  req->headers = headers;
+  req->body = req_str;
+  
   return 0;
 }
 
-bool compare_paths(const_string handler_path, const_string req_path, arena* arena, context *ctx) {
+bool check_handler(handler hand, struct request req, arena* arena, context *ctx) {
+  const_string handler_path = hand.path;
+  const_string req_path = req.path;
+  if (!(cs_eq(hand.method, req.method) ||
+		(cs_eq(hand.method, CS("GET")) && cs_eq(req.method, CS("HEAD"))))) {
+	return false;
+  }
+
   const_string path;
   bool entered = false;
 
@@ -385,28 +468,52 @@ bool compare_paths(const_string handler_path, const_string req_path, arena* aren
   return true;
 }
 
-void process_request(struct server *serv, size_t inc_fd) {
+struct process_request_args {
+  struct server serv;
+  size_t inc_fd;
+};
+
+void *process_request(void *args) {
+  struct process_request_args *pargs = args;
+  struct server serv = pargs->serv;
+  size_t inc_fd = pargs->inc_fd;
+  
   arena req_arena = {0};
 
-  struct request req;
+  struct request req = {0};
+  req.inc_fd = inc_fd;
+  req.arena = &req_arena;
+  
   struct response resp = {0};
+  req.resp = &resp;
+  
   int parse_res = parse_request(&req_arena, inc_fd, &req);
   if (parse_res != 0) {
 	resp.code = parse_res;
+	http_send(req);
   }
 
   context req_context = {0};
-  set_context_value(&req_arena, &req_context, (context_value){CS("arena"), &req_arena});
-  for (size_t i = 0; i < serv->global_ctx.len; i++) {
-	set_context_value(&req_arena, &req_context, *(serv->global_ctx.data + i));
+  for (size_t i = 0; i < serv.global_ctx.len; i++) {
+	set_context_value(&req_arena, &req_context, *(serv.global_ctx.data + i));
   }
 
   if (!resp.code) {
-	for (size_t i = 0; i < serv->handlers.len; i++) {
-	  struct handler handler = serv->handlers.data[i];
-	  if ((cs_eq(handler.method, req.method) || (cs_eq(handler.method, CS("GET")) && cs_eq(req.method, CS("HEAD"))) )
-		  && compare_paths(handler.path, req.path, &req_arena, &req_context)) {
-		handler.func(&req_context, req, &resp);
+	for (size_t i = 0; i < serv.handlers.len; i++) {
+	  struct handler handler = serv.handlers.data[i];
+	  if (check_handler(handler, req, &req_arena, &req_context)) {
+		if (handler.middleware != NULL) {
+		  handler.middleware->func(handler.middleware, req);
+		} else {
+		  handler.func(req);
+		}
+		
+		if (!resp.sent) {
+		  char *error = "Server handled the request but did not send anything";
+		  http_log(HTTP_ERROR, error);
+		  resp.code = INTERNAL_SERVER_ERROR;
+		  resp.body = CS(error);
+		}
 		break;
 	  }
 	}
@@ -416,25 +523,16 @@ void process_request(struct server *serv, size_t inc_fd) {
 	resp.code = NOT_FOUND;
   }
 
-  if (resp.string.len == 0) {
-	compose_response(&req_arena, &resp);
+  if (!resp.sent) {
+	http_send(req);
   }
 
-  const char *resp_cstr = resp.string.data;
-  int resp_len = resp.string.len;
 
-  int sent = send(inc_fd, resp_cstr, resp_len, 0);
-  while (sent > 0 && resp_len - sent > 0) {
-	resp_len -= sent;
-	sent = send(inc_fd, resp_cstr, resp_len, 0);
-  }
-
-  if (sent < 0) {
-	perror("send");
-  }
 
   close(inc_fd);
   arena_free(&req_arena);
+
+  pthread_exit(NULL);
 }
 
 int listen_and_serve(struct server *serv) {
@@ -456,8 +554,13 @@ int listen_and_serve(struct server *serv) {
 	  return 1;
 	}
 
-	process_request(serv, inc_fd);
-	close(inc_fd);
+	struct process_request_args args = {
+	  .serv = *serv,
+	  .inc_fd = inc_fd,
+	};
+	
+	pthread_t thread_id;
+	pthread_create(&thread_id, NULL, process_request, (void *)&args);
   }
   return 0;
 }
