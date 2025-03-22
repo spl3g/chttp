@@ -168,7 +168,7 @@ void http_send_body(http_request req, const_string body);
 int init_server(arena *arena, http_server *serv, char *addr, char *port);
 int listen_and_serve(http_server *serv);
 
-http_handler *http_handle_path(http_server *serv, const_string method, const_string path, http_handler_func handler);
+http_handler *http_handle_path(http_server *serv, char *method, char *path, http_handler_func handler);
 
 void http_run_next(http_middleware *self, http_request req);
 void http_register_global_middleware(http_server *hand, http_middleware_func func);

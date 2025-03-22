@@ -233,10 +233,10 @@ int init_server(arena *arena, http_server *serv, char *addr, char *port) {
   return 0;
 }
 
-http_handler *http_handle_path(http_server *serv, const_string method, const_string path, http_handler_func handler) {
+http_handler *http_handle_path(http_server *serv, char* method, char* path, http_handler_func handler) {
   http_handler hand = {
-	.method = method,
-	.path = path,
+	.method = cs_from_cstr(method),
+	.path = cs_from_cstr(path),
 	.func = handler,
   };
   
