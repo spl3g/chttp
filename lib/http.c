@@ -124,6 +124,16 @@ void *get_context_value(context *ctx, char* key) {
   return NULL;
 }
 
+void http_internal_server_error_handler(struct request req) {
+  const_string *error = get_context_value(req.ctx, "error");
+  req.resp->code = INTERNAL_SERVER_ERROR;
+  req.resp->body = *error;
+  http_send(req);
+}
+
+void http_not_found_handler(struct request req) {
+  req.resp->code = NOT_FOUND;
+  http_send(req);
 }
 
 void http_run_next(http_middleware *self, struct request req) {
@@ -523,10 +533,11 @@ void *process_request(void *args) {
 		}
 		
 		if (!resp.sent) {
-		  char *error = "Server handled the request but did not send anything";
-		  http_log(HTTP_ERROR, error);
-		  resp.code = INTERNAL_SERVER_ERROR;
-		  resp.body = CS(error);
+		  const_string error = CS("Server handled the request but did not send anything\n");
+		  http_log(HTTP_ERROR, "%s", error.data);
+		  set_context_value(&req_arena, &req_context, (context_value){CS("error"), (void *)&error});
+		  g_mid->end->handler = http_internal_server_error_handler;
+		  g_mid->start->func(g_mid->start, req);
 		}
 		break;
 	  }
@@ -534,14 +545,9 @@ void *process_request(void *args) {
   }
 
   if (!resp.code) {
-	resp.code = NOT_FOUND;
+	g_mid->end->handler = http_not_found_handler;
+	g_mid->start->func(g_mid->start, req);
   }
-
-  if (!resp.sent) {
-	http_send(req);
-  }
-
-
 
   close(inc_fd);
   arena_free(&req_arena);
