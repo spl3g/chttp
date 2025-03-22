@@ -1,0 +1,75 @@
+* chttp
+This is not really a library, but a little project for my education. But if you really want to use it, you can.
+** Installation
+Just copy the lib directory and use the header files.
+** Usage
+*** Initializing the server
+#+begin_src c
+  arena arena = {0};
+  http_server serv = {0};
+  if (init_server(&arena, &serv, "127.0.0.1", "6969") != 0) {
+    return 1;
+  }
+#+end_src
+*** Adding handlers
+#+begin_src c
+  http_handler *hello_world_handler = http_handle_path(&serv, "GET", "/", hello_world);
+
+  void hello_world(http_request req) {
+    req.resp->code = OK;
+    req.resp->body = CS("Hello world!\n");
+    http_send(req);
+  }
+#+end_src
+*** Adding middleware
+#+begin_src c
+  http_register_global_middleware(&serv, logging_func);
+  // or
+  http_register_handler_middleware(&arena, hello_world_handler, logging_func);
+
+  void logging_func(http_middleware *self, http_request req) {
+    // you have to run http_run_next to run the next middleware
+    http_run_next(self, req);
+    // or you can just send the response
+    // http_send(req);
+    
+    http_log(HTTP_INFO, CS_FMT" "CS_FMT": %ld\n", CS_ARG(req.method), CS_ARG(req.path), req.resp->code);
+  }
+#+end_src
+*** Listening for requests
+And to wrap things up, we need to run
+#+begin_src c
+  listen_and_serve(&serv);
+#+end_src
+*** Full example
+#+begin_src c
+  #include "lib/http.h"
+  #include "lib/const_strings.h"
+
+  void logging_func(http_middleware *self, http_request req) {
+    http_run_next(self, req);
+    http_log(HTTP_INFO, CS_FMT" "CS_FMT": %ld\n", CS_ARG(req.method), CS_ARG(req.path), req.resp->code);
+  }
+
+  void hello_world(http_request req) {
+    req.resp->code = OK;
+    req.resp->body = CS("Hello world!\n");
+    http_send(req);
+  }
+
+  int main() {
+    arena arena = {0};
+    http_server serv = {0};
+    if (init_server(&arena, &serv, "127.0.0.1", "6969") != 0) {
+  	return 1;
+    }
+
+    http_handler *hello_world_handler = http_handle_path(&serv, "GET", "/", hello_world);
+    http_register_handler_middleware(&arena, hello_world_handler, logging_func);
+    http_register_global_middleware(&serv, logging_func);
+
+    listen_and_serve(&serv);
+
+    return 0;
+  }
+#+end_src
