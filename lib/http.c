@@ -437,7 +437,10 @@ int parse_request(arena *arena, size_t inc_fd, struct request *req) {
   return 0;
 }
 
-bool check_handler(handler hand, struct request req, arena* arena, context *ctx) {
+bool check_handler(handler hand, struct request req) {
+  arena *arena = req.arena;
+  context *ctx = req.ctx;
+  
   const_string handler_path = hand.path;
   const_string req_path = req.path;
   if (!(cs_eq(hand.method, req.method) ||
@@ -507,7 +510,7 @@ void *process_request(void *args) {
   if (!resp.sent) {
 	for (size_t i = 0; i < serv.handlers.len; i++) {
 	  struct handler handler = serv.handlers.data[i];
-	  if (check_handler(handler, req, &req_arena, &req_context)) {
+	  if (check_handler(handler, req)) {
 		if (serv.global_middleware != NULL) {
 		  g_mid->end->next = handler.middleware;
 		  g_mid->end->handler = handler.func;
