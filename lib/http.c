@@ -505,6 +505,7 @@ void *process_request(void *args) {
   for (size_t i = 0; i < serv.global_ctx.len; i++) {
 	set_context_value(&req_arena, &req_context, *(serv.global_ctx.data + i));
   }
+  req.ctx = &req_context;
 
   http_global_middleware *g_mid = serv.global_middleware;
   if (!resp.sent) {
