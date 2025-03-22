@@ -35,68 +35,68 @@ typedef struct {
 typedef struct {
   const_string key;
   const_string val;
-} query;
+} http_query;
 
 typedef struct {
   KV *data;
   size_t len;
   size_t cap;
-} query_da;
+} http_query_da;
 
 typedef struct {
   const_string key;
   void *val;
-} context_value;
+} http_context_value;
 
 typedef struct {
-  context_value *data;
+  http_context_value *data;
   size_t len;
   size_t cap;
-} context;
+} http_context;
 
-struct request {
-  size_t inc_fd;
-  const_string method;
-  const_string path;
-  query_da query;
-  header_da headers;
-  const_string body;
-
-  arena *arena;
-  struct response* resp;
-  context *ctx;
-};
-
-struct response {
+typedef struct {
   size_t code;
   header_da headers;
   const_string body;
   bool sent;
-};
+} http_response;
 
-typedef void (*handler_func)(struct request);
+typedef struct {
+  size_t inc_fd;
+  const_string method;
+  const_string path;
+  http_query_da query;
+  header_da headers;
+  const_string body;
 
-typedef struct handler_da handler_da;
+  arena *arena;
+  http_response* resp;
+  http_context *ctx;
+} http_request;
+
+typedef void (*http_handler_func)(http_request);
+
+typedef struct http_handler_da http_handler_da;
 typedef struct http_middleware http_middleware;
-typedef struct handler handler; 
+typedef struct http_handler http_handler; 
 
-typedef void (*http_middleware_func)(http_middleware *, struct request);
+typedef void (*http_middleware_func)(http_middleware *, http_request);
 
 struct http_middleware {
   http_middleware_func func;
   http_middleware *next;
-  handler_func handler;
+  http_handler_func handler;
 };
 
-struct handler {
+struct http_handler {
   const_string method;
   const_string path;
   http_middleware *middleware;
-  handler_func func;
+  http_handler_func func;
 };
 
-struct handler_da {
-  handler *data;
+struct http_handler_da {
+  http_handler *data;
   size_t len;
   size_t cap;
 };
@@ -106,14 +106,14 @@ typedef struct {
   http_middleware *end;
 } http_global_middleware;
 
-struct server {
+typedef struct {
   size_t sockfd;
   struct sockaddr *addr;
   arena *arena;
-  handler_da handlers;
-  context global_ctx;
+  http_handler_da handlers;
+  http_context global_ctx;
   http_global_middleware *global_middleware;
-};
+} http_server;
 
 typedef enum {
   HTTP_INFO = 0,
@@ -151,27 +151,27 @@ typedef enum {
   BAD_GATEWAY = 502,
   SERVICE_UNAVAILABLE = 503,
   HTTP_VERSION_NOT_SUPPPORTED = 505,
-} response_code;
+} http_response_code;
 
-const_string get_response_string(response_code code);
+const_string get_response_string(http_response_code code);
 void *get_in_addr(struct sockaddr *sa);
 int get_in_port(struct sockaddr *sa);
 void http_log(http_log_level log, char *fmt, ...);
 
-void set_context_value(arena *arena, context *ctx, context_value kv);
-void *get_context_value(context *ctx, char* key);
+void set_context_value(arena *arena, http_context *ctx, http_context_value kv);
+void *get_context_value(http_context *ctx, char* key);
 
-void http_send(struct request req);
-void http_send_json(struct request req, const_string json);
-void http_send_body(struct request req, const_string body);
+void http_send(http_request req);
+void http_send_json(http_request req, const_string json);
+void http_send_body(http_request req, const_string body);
 
-int init_server(arena *arena, struct server *serv, char *addr, char *port);
-int listen_and_serve(struct server *serv);
+int init_server(arena *arena, http_server *serv, char *addr, char *port);
+int listen_and_serve(http_server *serv);
 
-handler *http_handle_path(struct server *serv, const_string method, const_string path, handler_func handler);
+http_handler *http_handle_path(http_server *serv, const_string method, const_string path, http_handler_func handler);
 
-void http_run_next(http_middleware *self, struct request req);
-void http_register_global_middleware(struct server *hand, http_middleware_func func);
-void http_register_handler_middleware(arena *arena, handler *hand, http_middleware_func func);
+void http_run_next(http_middleware *self, http_request req);
+void http_register_global_middleware(http_server *hand, http_middleware_func func);
+void http_register_handler_middleware(arena *arena, http_handler *hand, http_middleware_func func);
 
 #endif // HTTP_H_
