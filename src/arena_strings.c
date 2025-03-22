@@ -1,4 +1,4 @@
-#include "arena_strings.h"
+#include <chttp/arena_strings.h>
 
 const_string arena_cs_init(arena *a, int len) {
   char *str = new(a, char, len+1);

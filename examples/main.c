@@ -1,5 +1,5 @@
-#include "lib/const_strings.h"
-#include "lib/http.h"
+#include <chttp/const_strings.h>
+#include <chttp/http.h>
 
 void success(http_request req) {
   req.resp->code = OK;
@@ -13,7 +13,7 @@ void logging_func(http_middleware *self, http_request req) {
 }
 
 void whatever(http_middleware *self, http_request req) {
-  http_log(HTTP_INFO, "Whatever");
+  http_log(HTTP_INFO, "Whatever\n");
   http_run_next(self, req);
 }
 
@@ -25,7 +25,7 @@ int main() {
   }
 
   http_register_global_middleware(&serv, logging_func);
-  http_handler *success_handler = http_handle_path(&serv, CS("GET"), CS("/"), success);
+  http_handler *success_handler = http_handle_path(&serv, "GET", "/", success);
   http_register_handler_middleware(&arena, success_handler, whatever);
   
   listen_and_serve(&serv);

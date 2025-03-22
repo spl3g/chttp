@@ -1,7 +1,12 @@
 * chttp
 This is not really a library, but a little project for my education. But if you really want to use it, you can.
 ** Installation
-Just copy the lib directory and use the header files.
+#+begin_src shell
+  make static
+  # or
+  make shared
+#+end_src
+Copy the directory in the =include/= folder to your project.
 ** Usage
 *** Initializing the server
 #+begin_src c
@@ -43,8 +48,8 @@ And to wrap things up, we need to run
 #+end_src
 *** Full example
 #+begin_src c
-  #include "lib/http.h"
-  #include "lib/const_strings.h"
+  #include <chttp/http.h>
+  #include <chttp/const_strings.h>
 
   void logging_func(http_middleware *self, http_request req) {
     http_run_next(self, req);
