@@ -263,8 +263,8 @@ const_string http_compose_response(arena *arena, struct response *resp) {
 	arena_da_append(arena, &resp_da, header_str);
   }
   
+  arena_da_append(arena, &resp_da, CS(""));
   if (resp->body.len != 0) {
-	arena_da_append(arena, &resp_da, CS(""));
 	arena_da_append(arena, &resp_da, resp->body);
   }
   
