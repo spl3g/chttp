@@ -170,6 +170,7 @@ int listen_and_serve(struct server *serv);
 
 handler *http_handle_path(struct server *serv, const_string method, const_string path, handler_func handler);
 
+void http_run_next(http_middleware *self, struct request req);
 void http_register_global_middleware(struct server *hand, http_middleware_func func);
 void http_register_handler_middleware(arena *arena, handler *hand, http_middleware_func func);
 
