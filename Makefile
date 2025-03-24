@@ -2,7 +2,7 @@ CC = gcc
 AR = ar
 CFLAGS = -Wall -Wextra -fPIC -Iinclude/
 
-LIBNAME = chttp
+LIBNAME = libchttp
 SOURCES = $(wildcard src/*.c)
 OBJECTS = $(SOURCES:.c=.o)
 
