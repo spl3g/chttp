@@ -65,6 +65,7 @@ typedef struct {
   size_t inc_fd;
   const_string method;
   const_string path;
+  const_string version;
   http_query_da query;
   header_da headers;
   const_string body;

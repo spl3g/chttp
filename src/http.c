@@ -410,7 +410,7 @@ int parse_request(arena *arena, size_t inc_fd, http_request *req) {
   
   const_string method = chop_request(&req_str, ' ', &parse_err);
   const_string path = chop_request(&req_str, ' ', &parse_err);
-  chop_request(&req_str, '\r', &parse_err);
+  const_string version = chop_request(&req_str, '\r', &parse_err);
   req_str.data += 1;
 
   header_da headers = {0};
@@ -440,6 +440,7 @@ int parse_request(arena *arena, size_t inc_fd, http_request *req) {
   
   req->method = method;
   req->path = path;
+  req->version = version;
   req->query = queries;
   req->headers = headers;
   req->body = req_str;
